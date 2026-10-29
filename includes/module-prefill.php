@@ -75,30 +75,40 @@ function adw_mecapi_prefill_maybe_print() {
         return;
     }
 
-    /* Champs dont le nom de paramètre diffère du libellé attendu. */
+    /* Champs logiques du pré-remplissage. Chaque entrée accepte plusieurs
+     * synonymes de paramètres URL : la convention du plugin (adw_prenom,
+     * adw_tel, adw_membre, ...) et celle de l'application (adw_name,
+     * adw_phone, adw_member_no, ...). Le premier trouvé gagne. */
     $params = array(
-        'prenom'         => 'adw_prenom',
-        'nom'            => 'adw_nom',
-        'email'          => 'adw_email',
-        'tel'            => 'adw_tel',
-        'membre'         => 'adw_membre',
-        'adresse'        => 'adw_adresse',
-        'code_postal'    => 'adw_code_postal',
-        'date_naissance' => 'adw_date_naissance',
-        'genre'          => 'adw_genre',
-        'statut'         => 'adw_statut',
+        'prenom'         => array('adw_prenom', 'adw_firstname'),
+        'nom'            => array('adw_nom', 'adw_lastname', 'adw_name'),
+        'email'          => array('adw_email'),
+        'tel'            => array('adw_tel', 'adw_phone'),
+        'membre'         => array('adw_membre', 'adw_member_no', 'adw_member'),
+        'adresse'        => array('adw_adresse', 'adw_address'),
+        'code_postal'    => array('adw_code_postal', 'adw_postal_code', 'adw_zip'),
+        'date_naissance' => array('adw_date_naissance', 'adw_birthdate', 'adw_dob'),
+        'genre'          => array('adw_genre', 'adw_gender'),
+        'statut'         => array('adw_statut', 'adw_status'),
+        'age'            => array('adw_age'),
     );
 
     $values = array();
-    foreach ($params as $key => $param) {
-        if (isset($_GET[$param])) {
-            $values[$key] = sanitize_text_field(wp_unslash($_GET[$param]));
+    foreach ($params as $key => $aliases) {
+        foreach ($aliases as $param) {
+            if (isset($_GET[$param])) {
+                $values[$key] = sanitize_text_field(wp_unslash($_GET[$param]));
+                break;
+            }
         }
     }
 
     /* Paramètres adw_* libres : adw_<clef> remplit le champ dont le
        libellé contient <clef> (n° de membre, code postal, etc.). */
-    $known = array_values($params);
+    $known = array();
+    foreach ($params as $aliases) {
+        $known = array_merge($known, $aliases);
+    }
     foreach ($_GET as $key => $value) {
         $clean = sanitize_key($key);
         if (strpos($clean, 'adw_') !== 0 || in_array($clean, $known, true)) {

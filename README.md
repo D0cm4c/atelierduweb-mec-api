@@ -72,4 +72,4 @@ Les 4 objets doivent apparaître dans la réponse JSON.
 
 ## Version
 
-0.3.1 — modules 1, 2, tarif, 3, 4 (préfill générique adw_*), 5. Tous les modules prévus sont livrés.
+0.3.2 — modules 1, 2, tarif, 3, 4 (préfill générique adw_*), 5. Tous les modules prévus sont livrés.
