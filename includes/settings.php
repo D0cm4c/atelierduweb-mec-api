@@ -150,11 +150,129 @@ function adw_mecapi_settings_page() {
         </form>
 
         <hr />
-        <h2>Test rapide</h2>
-        <p>Champs publics (après activation) :</p>
-        <p><code><?php echo esc_html(site_url('/wp-json/wp/v2/mec-events?per_page=1&_fields=id,title,mec_organizer,mec_location,mec_price,mec_availability')); ?></code></p>
-        <p>Inscriptions (depuis un serveur, avec le secret) :</p>
-        <p><code>curl -H "X-ADW-Secret: VOTRE_SECRET" <?php echo esc_html(site_url('/wp-json/adw/v1/bookings?per_page=5')); ?></code></p>
+        <h2>Tests de diagnostic</h2>
+        <?php
+        $test_url = site_url('/wp-json/wp/v2/mec-events?per_page=1&_fields=id,title,mec_organizer,mec_location,mec_price,mec_availability');
+        $resp = wp_remote_get($test_url, array('timeout' => 10));
+        ?>
+        <table class="widefat striped" style="max-width:900px;">
+            <thead><tr><th>Test</th><th style="width:12%;">Résultat</th><th>Détail</th></tr></thead>
+            <tbody>
+            <?php
+            /* Test 1 : API REST joignable + MEC actif. */
+            $ok = false; $detail = '';
+            if (is_wp_error($resp)) {
+                $detail = 'Erreur réseau : ' . esc_html($resp->get_error_message());
+            } else {
+                $code = wp_remote_retrieve_response_code($resp);
+                $body = json_decode(wp_remote_retrieve_body($resp), true);
+                if ($code !== 200) {
+                    $detail = 'HTTP ' . intval($code) . ' — l\'API REST est-elle accessible ? (sécurité/pare-feu de l\'hébergeur)';
+                } elseif (!is_array($body)) {
+                    $detail = 'Réponse non JSON.';
+                } elseif (!isset($body[0]) && $body === array()) {
+                    $ok = true; $detail = 'API OK mais aucun événement MEC trouvé.';
+                } elseif (!isset($body[0]['id'])) {
+                    $detail = 'Réponse inattendue — M.E. Calendar est-il actif ?';
+                } else {
+                    $ok = true; $detail = 'API REST et MEC opérationnels.';
+                }
+            }
+            ?>
+            <tr>
+                <td><strong>1. API REST + M.E. Calendar</strong></td>
+                <td><?php echo $ok ? '✅ <strong style="color:#00a32a;">OK</strong>' : '❌ <strong style="color:#d63638;">PAS OK</strong>'; ?></td>
+                <td><?php echo $detail; ?></td>
+            </tr>
+
+            <?php
+            /* Test 2 : les 4 champs personnalisés dans la réponse. */
+            $ok = false; $detail = '';
+            if (!is_wp_error($resp) && wp_remote_retrieve_response_code($resp) === 200) {
+                $body = json_decode(wp_remote_retrieve_body($resp), true);
+                if (isset($body[0]['id'])) {
+                    $missing = array();
+                    foreach (array('mec_organizer' => 'module_organizer', 'mec_location' => 'module_location', 'mec_price' => 'module_price', 'mec_availability' => 'module_spots') as $field => $module) {
+                        if (empty($settings[$module])) {
+                            $missing[] = $field . ' (module désactivé)';
+                        } elseif (!array_key_exists($field, $body[0])) {
+                            $missing[] = $field . ' (absent de la réponse)';
+                        }
+                    }
+                    if (empty($missing)) {
+                        $ok = true; $detail = 'Les 4 champs (organisateur, lieu, tarif, places) sont présents.';
+                    } else {
+                        $detail = 'Manquant : ' . esc_html(implode(', ', $missing));
+                    }
+                } else {
+                    $detail = 'Impossible de tester (voir test 1).';
+                }
+            } else {
+                $detail = 'Impossible de tester (voir test 1).';
+            }
+            ?>
+            <tr>
+                <td><strong>2. Champs personnalisés (organisateur, lieu, tarif, places)</strong></td>
+                <td><?php echo $ok ? '✅ <strong style="color:#00a32a;">OK</strong>' : '❌ <strong style="color:#d63638;">PAS OK</strong>'; ?></td>
+                <td><?php echo $detail; ?></td>
+            </tr>
+
+            <?php
+            /* Test 3 : endpoint inscriptions (selon activation). */
+            $ok = false; $detail = '';
+            if (empty($settings['module_bookings'])) {
+                $detail = 'Endpoint désactivé (normal en phase actuelle — à activer avec le backend).';
+            } else {
+                $bresp = wp_remote_get(site_url('/wp-json/adw/v1/bookings?per_page=1'), array('timeout' => 10));
+                if (is_wp_error($bresp)) {
+                    $detail = 'Erreur réseau : ' . esc_html($bresp->get_error_message());
+                } else {
+                    $bcode = wp_remote_retrieve_response_code($bresp);
+                    if ($bcode === 401) {
+                        $ok = true; $detail = 'Endpoint actif et protégé : sans secret → 401 (attendu).';
+                    } elseif ($bcode === 403) {
+                        $detail = 'Endpoint actif mais aucun secret configuré → 403. Générez un secret ci-dessus.';
+                    } elseif ($bcode === 200) {
+                        $detail = 'HTTP 200 sans secret — ⚠️ vérifiez la configuration du secret !';
+                    } else {
+                        $detail = 'HTTP ' . intval($bcode) . ' — inattendu.';
+                    }
+                }
+            }
+            ?>
+            <tr>
+                <td><strong>3. Endpoint inscriptions (sécurité)</strong></td>
+                <td><?php echo $ok ? '✅ <strong style="color:#00a32a;">OK</strong>' : ($detail && strpos($detail, 'normal en phase') !== false ? '⚪ <strong>—</strong>' : '❌ <strong style="color:#d63638;">PAS OK</strong>'); ?></td>
+                <td><?php echo $detail; ?></td>
+            </tr>
+
+            <?php
+            /* Test 4 : module préfill actif (test navigateur via lien). */
+            $ok = !empty($settings['module_prefill']);
+            $events = array();
+            if (!is_wp_error($resp) && wp_remote_retrieve_response_code($resp) === 200) {
+                $ev = wp_remote_get(site_url('/wp-json/wp/v2/mec-events?per_page=1&_fields=link'), array('timeout' => 10));
+                if (!is_wp_error($ev)) {
+                    $evb = json_decode(wp_remote_retrieve_body($ev), true);
+                    if (isset($evb[0]['link'])) { $events = $evb; }
+                }
+            }
+            $link = !empty($events) ? add_query_arg(array('adw_prenom' => 'Test', 'adw_nom' => 'Prefill', 'adw_email' => 'test@atelierduweb.be', 'adw_tel' => '0470000000', 'adw_membre' => 'TEST'), $events[0]['link']) : '';
+            $detail = $ok ? 'Cliquez le lien de test : la modale doit s\'ouvrir et les champs se remplir à l\'étape Participants.' : 'Module désactivé — cochez-le et enregistrez.';
+            ?>
+            <tr>
+                <td><strong>4. Pré-remplissage (test manuel)</strong></td>
+                <td><?php echo $ok ? '✅ <strong style="color:#00a32a;">OK</strong>' : '❌ <strong style="color:#d63638;">PAS OK</strong>'; ?></td>
+                <td>
+                    <?php echo $detail; ?>
+                    <?php if ($ok && $link) : ?>
+                        <a href="<?php echo esc_url($link); ?>" target="_blank" class="button button-small" style="margin-left:8px;">Ouvrir le test dans un onglet</a>
+                    <?php endif; ?>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+        <p class="description">Tests 1-3 exécutés côté serveur au chargement de cette page ; test 4 à faire dans le navigateur (le remplissage s\'y vérifie visuellement).</p>
 
         <script>
             function adwRandomSecret() {
