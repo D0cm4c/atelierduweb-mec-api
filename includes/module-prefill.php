@@ -77,15 +77,16 @@ function adw_mecapi_prefill_maybe_print() {
 
     /* Champs dont le nom de paramètre diffère du libellé attendu. */
     $params = array(
-        'prenom'  => 'adw_prenom',
-        'nom'     => 'adw_nom',
-        'email'   => 'adw_email',
-        'tel'     => 'adw_tel',
-        'membre'  => 'adw_membre',
-        'adresse' => 'adw_adresse',
-        'age'     => 'adw_age',
-        'genre'   => 'adw_genre',
-        'statut'  => 'adw_statut',
+        'prenom'         => 'adw_prenom',
+        'nom'            => 'adw_nom',
+        'email'          => 'adw_email',
+        'tel'            => 'adw_tel',
+        'membre'         => 'adw_membre',
+        'adresse'        => 'adw_adresse',
+        'code_postal'    => 'adw_code_postal',
+        'date_naissance' => 'adw_date_naissance',
+        'genre'          => 'adw_genre',
+        'statut'         => 'adw_statut',
     );
 
     $values = array();
@@ -136,14 +137,28 @@ function adw_mecapi_prefill_maybe_print() {
 
         /* Libellés par clé, en plus du nom du paramètre lui-même. */
         var EXTRA_LABELS = {
-            tel:     ['phone', 'telephone', 'gsm', 'mobile', 'portable'],
-            membre:  ['member'],
-            adresse: ['address', 'rue'],
-            age:     ['date de naissance'],
-            genre:   ['sexe', 'civilite'],
-            statut:  ['status', 'situation'],
-            prenom:  ['first name', 'firstname', 'given name'],
-            nom:     ['nom de famille', 'last name', 'lastname', 'surname', 'family name']
+            tel:            ['phone', 'telephone', 'gsm', 'mobile', 'portable'],
+            membre:         ['member'],
+            adresse:        ['address', 'rue', 'adresse postale'],
+            code_postal:    ['postal'],
+            date_naissance: ['date de naissance', 'naissance', 'age'],
+            genre:         ['sexe', 'civilite'],
+            statut:         ['status', 'situation'],
+            prenom:         ['first name', 'firstname', 'given name'],
+            nom:           ['nom de famille', 'last name', 'lastname', 'surname', 'family name']
+        };
+
+        /* Identifiants MEC (data-field-id) des champs configurés sur le
+           site atelierduweb.be — reconnaissance prioritaire, infaillible
+           même si les libellés changent. */
+        var FIELD_IDS = {
+            membre:         '26',
+            date_naissance: '2',
+            adresse:        '3',
+            code_postal:    '4',
+            tel:            '5',
+            genre:          '6',
+            statut:         '7'
         };
 
         function norm(s) {
@@ -178,11 +193,21 @@ function adw_mecapi_prefill_maybe_print() {
             return false;
         }
 
+        function fieldHolder(field) {
+            return field.closest('li, .mec-book-reg-field, .mec-book-bfixed-field');
+        }
+
+        function holderVisible(holder) {
+            return !!holder && !!(holder.offsetWidth || holder.offsetHeight || holder.getClientRects().length);
+        }
+
         function editable(field) {
             if (field.disabled || field.readOnly) { return false; }
             if ((field.type !== 'radio' && field.type !== 'checkbox') &&
                 field.value && String(field.value).length) { return false; }
             if (field.getAttribute('aria-disabled') === 'true') { return false; }
+            /* Champs masqués par CSS (ex. radios admin) : ignorés. */
+            if (!holderVisible(fieldHolder(field))) { return false; }
             return true;
         }
 
@@ -241,9 +266,14 @@ function adw_mecapi_prefill_maybe_print() {
             if (!data[key]) { return; }
             var fields = regFields();
             for (var i = 0; i < fields.length; i++) {
-                if (predicate(fields[i]) && setValue(fields[i], data[key])) { return; }
+                if (predicate(fields[i]) && setValue(fields[i], data[key])) {
+                    filled[key] = true;
+                    return;
+                }
             }
         }
+
+        var filled = {};
 
         function isNameField(f) {
             return !!(f.closest && f.closest('.mec-book-reg-field-name')) || /\]\[name]$/.test(f.name || '');
@@ -257,6 +287,16 @@ function adw_mecapi_prefill_maybe_print() {
             if (data.email) { fill('email', isEmailField); }
             Object.keys(data).forEach(function (key) {
                 if (SPECIAL.indexOf(key) !== -1) { return; }
+                /* 1. Reconnaissance par data-field-id MEC (prioritaire). */
+                if (FIELD_IDS[key]) {
+                    var fid = FIELD_IDS[key];
+                    fill(key, function (f) {
+                        var h = fieldHolder(f);
+                        return !!(h && h.getAttribute('data-field-id') === fid);
+                    });
+                    if (filled[key]) { return; }
+                }
+                /* 2. Repli par libellé. */
                 fill(key, function (f) { return matchLabel(f, patternsFor(key)); });
             });
         }

@@ -29,7 +29,8 @@ L'application ouvre une page d'événement avec des paramètres `adw_*` :
 https://atelierduweb.be/formation/xxx/?adw_prenom=Jean&adw_nom=Dupont&adw_email=jean@exemple.be&adw_tel=0470%2000%2000%2000&adw_membre=ADW-1234
 ```
 
-- Paramètres prédéfinis : `adw_prenom`, `adw_nom`, `adw_email`, `adw_tel`, `adw_membre`, `adw_adresse`, `adw_age`, `adw_genre`, `adw_statut` — et **tout paramètre `adw_<clef>` libre** : il remplit le champ du formulaire dont le libellé contient `<clef>` (ex. `adw_code_postal` → champ « Code postal »).
+- Paramètres prédéfinis (mappés sur les champs MEC réels du site, par `data-field-id`) : `adw_prenom`, `adw_nom`, `adw_email`, `adw_membre` (n° de membre, champ 26), `adw_date_naissance` (champ 2, format AAAA-MM-JJ), `adw_adresse` (champ 3), `adw_code_postal` (champ 4), `adw_tel` (champ 5), `adw_genre` (champ 6 : F/M/X/Divers), `adw_statut` (champ 7 : Travailleur.se/Interim/Actiris/Mutuelle/CPAS/Pensionné/Enfant/Etudiant) — et **tout paramètre `adw_<clef>` libre** en repli par libellé.
+- Le champ « Nom et Prénom » de MEC est rempli avec « Prénom Nom » fusionnés.
 - Si l'URL ne contient pas encore `method=mec-booking-modal`, le plugin l'ajoute par redirection : la **modale s'ouvre directement**, pré-remplie.
 - Reconnaissance basée sur le HTML réel du formulaire MEC : nom (`.mec-book-reg-field-name`), e-mail (`.mec-book-reg-field-mec_email`), puis champs personnalisés par libellé (tél, n° de membre, genre, statut, adresse, âge...), sans accents, en mot entier.
 - Prend en charge les champs texte, listes déroulantes, boutons radio et cases à cocher (ex. `adw_genre=F` coche l'option « Femme », `adw_statut=Etudiant` sélectionne l'option correspondante).
@@ -71,4 +72,4 @@ Les 4 objets doivent apparaître dans la réponse JSON.
 
 ## Version
 
-0.3.0 — modules 1, 2, tarif, 3, 4 (préfill générique adw_*), 5. Tous les modules prévus sont livrés.
+0.3.1 — modules 1, 2, tarif, 3, 4 (préfill générique adw_*), 5. Tous les modules prévus sont livrés.
