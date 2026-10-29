@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Atelier du Web — MEC API
  * Description: Expose organisateur, lieu, tarif, places restantes et inscriptions des événements M.E. Calendar via l'API REST — pour l'application de gestion des membres de l'Atelier du Web.
- * Version: 0.1.0
+ * Version: 0.2.0
  * Author: Atelier du Web
  * License: GPL-2.0-or-later
  * Text Domain: adw-mecapi
@@ -21,13 +21,14 @@ if (!defined('ABSPATH')) {
     return;
 }
 
-define('ADW_MECAPI_VERSION', '0.1.0');
+define('ADW_MECAPI_VERSION', '0.2.0');
 
 require_once plugin_dir_path(__FILE__) . 'includes/module-organizer.php';
 require_once plugin_dir_path(__FILE__) . 'includes/module-location.php';
 require_once plugin_dir_path(__FILE__) . 'includes/module-price.php';
 require_once plugin_dir_path(__FILE__) . 'includes/module-spots.php';
 require_once plugin_dir_path(__FILE__) . 'includes/module-bookings.php';
+require_once plugin_dir_path(__FILE__) . 'includes/module-prefill.php';
 require_once plugin_dir_path(__FILE__) . 'includes/settings.php';
 
 /**
@@ -39,6 +40,7 @@ function adw_mecapi_activate() {
         'module_location' => 1,
         'module_price' => 1,
         'module_spots' => 1,
+        'module_prefill' => 1,
         'module_bookings' => 0, // Désactivé par défaut — nécessite un secret.
         'bookings_secret' => '',
     );

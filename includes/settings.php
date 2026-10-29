@@ -51,6 +51,7 @@ function adw_mecapi_settings_save() {
         'module_location' => isset($_POST['module_location']) ? 1 : 0,
         'module_price' => isset($_POST['module_price']) ? 1 : 0,
         'module_spots' => isset($_POST['module_spots']) ? 1 : 0,
+        'module_prefill' => isset($_POST['module_prefill']) ? 1 : 0,
         'module_bookings' => isset($_POST['module_bookings']) ? 1 : 0,
         'bookings_secret' => isset($_POST['bookings_secret']) ? sanitize_text_field(wp_unslash($_POST['bookings_secret'])) : '',
     );
@@ -108,6 +109,19 @@ function adw_mecapi_settings_page() {
                     <td>
                         <input type="checkbox" id="module_spots" name="module_spots" <?php checked(!empty($settings['module_spots'])); ?> />
                         <span class="description">Champ <code>mec_availability</code> (limite, réservées, restantes, complet).</span>
+                    </td>
+                </tr>
+            </table>
+
+            <h2 class="title">Module pré-remplissage (formulaire de réservation MEC)</h2>
+            <p>Lorsqu'une page d'événement est ouverte avec des paramètres <code>adw_*</code> dans l'URL, le formulaire de réservation MEC est automatiquement pré-rempli. Exemple :</p>
+            <p><code><?php echo esc_html(site_url('/formation/xxx/?adw_prenom=Jean&adw_nom=Dupont&adw_email=jean@exemple.be&adw_tel=0470000000&adw_membre=1234')); ?></code></p>
+            <table class="form-table" role="presentation">
+                <tr>
+                    <th scope="row"><label for="module_prefill">Activer le pré-remplissage</label></th>
+                    <td>
+                        <input type="checkbox" id="module_prefill" name="module_prefill" <?php checked(!empty($settings['module_prefill'])); ?> />
+                        <span class="description">Reconnaît les champs par libellé (prénom, nom, e-mail, tél, n° de membre, adresse, âge). Ne remplit que les champs vides ; aucun script chargé si l'URL ne contient pas de paramètres <code>adw_*</code>.</span>
                     </td>
                 </tr>
             </table>
