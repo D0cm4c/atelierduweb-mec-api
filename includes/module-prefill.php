@@ -9,14 +9,24 @@
  *     &adw_email=jean@exemple.be&adw_tel=0470000000&adw_membre=1234
  *
  * Un script injecté en wp_footer (seulement si des paramètres adw_* sont
- * présents) remplit le formulaire de réservation MEC — modale ou page —
- * en reconnaissant les champs par leur libellé ou leur attribut,
- * indépendamment des identifiants générés par MEC.
+ * présents) remplit le formulaire de réservation MEC. Le formulaire est
+ * multi-étapes : les champs participants (étape 2) sont rendus en AJAX
+ * dans #mec_booking{event_id} — couvert via MutationObserver + poll.
+ *
+ * Stratégie de reconnaissance (issue du HTML réel du site) :
+ *   1. Sélecteurs structurels MEC :
+ *      - nom      : .mec-book-reg-field-name input, input[name$="][name]"]
+ *      - e-mail   : .mec-book-reg-field-mec_email input, input[name$="][email]"]
+ *   2. Repli par libellé sur les champs personnalisés
+ *      (li.mec-book-reg-field-*, .mec-book-bfixed-field-*) pour
+ *      tél, adresse, âge, n° de membre.
+ *   3. Jamais les champs de décompte de billets (book[tickets][X],
+ *      .mec-book-ticket-limit) ni les inputs système.
  *
  * Garanties (site en production) :
  *   - Aucune écriture en base, aucun fichier modifié.
  *   - Script minime, sans dépendance, chargé uniquement quand utile.
- *   - Gère l'ouverture asynchrone de la modale MEC (poll + MutationObserver).
+ *   - Ne remplit que les champs vides (idempotent).
  *
  * @package ADW_MECAPI
  */
@@ -56,105 +66,151 @@ function adw_mecapi_prefill_maybe_print() {
         return;
     }
 
+    /* Le champ « name » de MEC attend le participant complet. */
+    if (isset($values['nom']) && isset($values['prenom'])) {
+        $values['nom_complet'] = $values['prenom'] . ' ' . $values['nom'];
+    } elseif (isset($values['nom'])) {
+        $values['nom_complet'] = $values['nom'];
+    } elseif (isset($values['prenom'])) {
+        $values['nom_complet'] = $values['prenom'];
+    }
+
     $json = wp_json_encode($values);
     ?>
     <script>
     (function () {
-        if (typeof ADWPrefill !== 'undefined') { return; }
+        if (window.ADWPrefill) { return; }
         window.ADWPrefill = true;
 
         var data = <?php echo $json; ?>;
-
-        /* Noms de champs / libellés acceptés, en minuscules sans accents. */
-        var PATTERNS = {
-            prenom:  ['prenom', 'prénom', 'first name', 'firstname', 'given name'],
-            nom:     ['nom', 'last name', 'lastname', 'surname', 'family name', 'nom de famille'],
-            email:   ['email', 'e-mail', 'courriel', 'mail'],
-            tel:     ['tel', 'phone', 'telephone', 'gsm', 'mobile', 'portable'],
-            membre:  ['membre', 'numero de membre', 'n° de membre', 'numéro de membre', 'member'],
-            adresse: ['adresse', 'address', 'rue'],
-            age:     ['age', 'âge', 'date de naissance']
-        };
 
         function norm(s) {
             return (s || '').toLowerCase()
                 .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         }
 
-        function fieldLabel(field) {
-            if (field.id) {
-                var label = document.querySelector('label[for="' + CSS.escape(field.id) + '"]');
-                if (label) { return label.textContent || ''; }
-            }
-            var wrap = field.closest('label');
-            if (wrap) { return wrap.textContent || ''; }
-            var holder = field.closest('.mec-book-reg-field, .mec-book-inner, .mec-booking-reg-field, li, p, div');
-            if (holder) { return holder.textContent || ''; }
-            return '';
+        /* Motif recherché comme mot entier (évite « nom » dans « prenom »). */
+        function wordMatch(text, pattern) {
+            var p = norm(pattern).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return new RegExp('(^|[^a-z])' + p).test(norm(text));
         }
 
-        function matchField(field, patterns) {
-            var text = norm(field.name) + ' ' + norm(field.id) + ' ' + norm(field.placeholder) + ' ' + norm(field.getAttribute('aria-label')) + ' ' + norm(fieldLabel(field));
+        var LABELS = {
+            tel:     ['tel', 'phone', 'telephone', 'gsm', 'mobile', 'portable'],
+            membre:  ['membre', 'member'],
+            adresse: ['adresse', 'address', 'rue'],
+            age:     ['age', 'date de naissance'],
+            prenom:  ['prenom', 'first name', 'firstname', 'given name'],
+            nom:     ['nom de famille', 'last name', 'lastname', 'surname', 'family name']
+        };
+
+        function fieldLabelText(field) {
+            var holder = field.closest('li, label, .mec-book-reg-field, .mec-book-bfixed-field, p, div');
+            if (!holder) { return ''; }
+            var label = holder.querySelector('label');
+            return (label ? label.textContent : '') || holder.textContent || '';
+        }
+
+        function matchLabel(field, patterns) {
+            var text = norm(field.name) + ' ' + norm(field.id) + ' ' + norm(field.placeholder) + ' ' + norm(fieldLabelText(field));
             for (var i = 0; i < patterns.length; i++) {
-                var p = norm(patterns[i]);
-                if (p && text.indexOf(p) !== -1) { return true; }
+                if (wordMatch(text, patterns[i])) { return true; }
             }
             return false;
+        }
+
+        function editable(field) {
+            if (field.disabled || field.readOnly) { return false; }
+            if (field.value && String(field.value).length) { return false; }
+            if (field.getAttribute('aria-disabled') === 'true') { return false; }
+            return true;
+        }
+
+        /* Seuls les champs de saisie de participant — jamais le décompte
+           de billets (book[tickets][X], .mec-book-ticket-limit) ni les
+           champs système (action, event_id, step, nonce...). */
+        function regFields() {
+            var selector = '.mec-book-reg-field input, .mec-book-reg-field select, .mec-book-reg-field textarea,'
+                + ' .mec-book-bfixed-field input, .mec-book-bfixed-field select, .mec-book-bfixed-field textarea,'
+                + ' input[name$="][name]"], input[name$="][email]"], input[name*="][reg]["]';
+            return Array.prototype.filter.call(document.querySelectorAll(selector), editable);
         }
 
         function setValue(field, value) {
             if (field.tagName === 'SELECT') {
                 for (var i = 0; i < field.options.length; i++) {
-                    if (norm(field.options[i].textContent).indexOf(norm(value)) !== -1 ||
+                    if (norm(field.options[i].textContent) === norm(value) ||
                         norm(field.options[i].value) === norm(value)) {
-                        field.value = field.options[i].value;
+                        field.selectedIndex = i;
+                        field.dispatchEvent(new Event('change', { bubbles: true }));
                         return true;
                     }
                 }
                 return false;
             }
-            if (field.type === 'radio' || field.type === 'checkbox') { return false; }
+            if (field.type === 'radio' || field.type === 'checkbox' || field.type === 'hidden') { return false; }
             field.value = value;
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            field.dispatchEvent(new Event('change', { bubbles: true }));
             return true;
         }
 
-        function fillOne(key, fields) {
+        function fill(key, predicate) {
             if (!data[key]) { return; }
-            var patterns = PATTERNS[key] || [];
+            var fields = regFields();
             for (var i = 0; i < fields.length; i++) {
-                var f = fields[i];
-                if (f.disabled || f.readOnly || (f.value && f.value.length)) { continue; }
-                if (matchField(f, patterns)) { setValue(f, data[key]); return; }
+                if (predicate(fields[i])) {
+                    setValue(fields[i], data[key]);
+                    return;
+                }
             }
+        }
+
+        function isNameField(f) {
+            return !!(f.closest && f.closest('.mec-book-reg-field-name')) || /\]\[name]$/.test(f.name || '');
+        }
+        function isEmailField(f) {
+            return !!(f.closest && f.closest('.mec-book-reg-field-mec_email, .mec-book-reg-field-email')) || /\]\[email]$/.test(f.name || '');
         }
 
         function fillAll() {
-            var fields = document.querySelectorAll('input[type=text], input[type=email], input[type=tel], input[type=number], input[type=date], input:not([type]), select');
-            Object.keys(PATTERNS).forEach(function (key) { fillOne(key, fields); });
+            if (data.nom_complet) { fill('nom_complet', isNameField); }
+            if (data.email) { fill('email', isEmailField); }
+            if (data.prenom) { fill('prenom', function (f) { return matchLabel(f, LABELS.prenom); }); }
+            if (data.nom) { fill('nom', function (f) { return !isNameField(f) && matchLabel(f, LABELS.nom); }); }
+            if (data.tel) { fill('tel', function (f) { return matchLabel(f, LABELS.tel); }); }
+            if (data.membre) { fill('membre', function (f) { return matchLabel(f, LABELS.membre); }); }
+            if (data.adresse) { fill('adresse', function (f) { return matchLabel(f, LABELS.adresse); }); }
+            if (data.age) { fill('age', function (f) { return matchLabel(f, LABELS.age); }); }
         }
 
-        /* Champs visibles uniquement + idempotent (remplit seulement les champs vides). */
-        function visible(f) {
-            return !!(f.offsetWidth || f.offsetHeight || f.getClientRects().length);
+        /* L'étape 2 est rendue en AJAX : on observe #mec_booking* + le body. */
+        function containers() {
+            return document.querySelectorAll('[id^="mec_booking"], .mec-booking');
         }
 
-        var attempts = 0, filledOnce = false;
+        var attempts = 0;
+        var observer = null;
+
         function tick() {
-            var fields = document.querySelectorAll('input[type=text], input[type=email], input[type=tel], input[type=number], input[type=date], input:not([type]), select');
-            fields = Array.prototype.filter.call(fields, visible);
-            if (fields.length) {
-                if (!filledOnce) { fillAll(); filledOnce = true; }
-                /* La modale MEC peut re-rendre son formulaire : on complète les vides. */
-                fillAll();
-            }
-            if (++attempts < 40) { setTimeout(tick, 500); }
+            fillAll();
+            if (++attempts >= 24) { return; }
+            setTimeout(tick, 500);
         }
-        tick();
 
-        if (typeof MutationObserver !== 'undefined') {
-            new MutationObserver(function () {
-                fillAll();
-            }).observe(document.body, { childList: true, subtree: true });
+        function start() {
+            if (typeof MutationObserver !== 'undefined') {
+                observer = new MutationObserver(function () { fillAll(); });
+                containers().forEach(function (t) { observer.observe(t, { childList: true, subtree: true }); });
+                observer.observe(document.body, { childList: true, subtree: true });
+            }
+            tick();
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', start);
+        } else {
+            start();
         }
     })();
     </script>
