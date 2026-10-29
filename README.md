@@ -19,7 +19,7 @@ Plugin qui expose les informations de **M.E. Calendar** via l'API REST pour l'ap
 | Tarif | `mec_price` (wp/v2/mec-events) | ✅ actif | Coût brut (`mec_cost`), montant numérique, devise MEC. |
 | 3 — Places restantes | `mec_availability` (wp/v2/mec-events) | ✅ actif | Limite (`mec_total_bookings_limit`), réservées, restantes, « Complet ». |
 | 4 — Pré-remplissage | script wp_footer | ✅ actif | Pré-remplit le formulaire de réservation MEC à partir de paramètres d'URL `adw_*` (voir ci-dessous). |
-| 5 — Inscriptions | `GET /wp-json/adw/v1/bookings` | ❌ inactif | Bookings MEC avec **n° de membre** (détecté par le libellé du champ formulaire contenant « membre »). **Server-to-server uniquement**, secret header `X-ADW-Secret`. |
+| 5 — Inscriptions | `GET /wp-json/adw-mec/v1/inscriptions` | ❌ inactif | Bookings MEC avec **n° de membre** (détecté par le libellé du champ formulaire contenant « membre »). **Server-to-server uniquement**, secret header `X-ADW-Secret`. |
 
 ### Module 4 — Pré-remplissage de la modale de réservation
 
@@ -44,7 +44,7 @@ Test d'acceptation : ouvrir l'URL ci-dessus sur une formation existante, la moda
 
 ```
 curl -H "X-ADW-Secret: VOTRE_SECRET" \
-  "https://atelierduweb.be/wp-json/adw/v1/bookings?per_page=100"
+  "https://atelierduweb.be/wp-json/adw-mec/v1/inscriptions?per_page=100"
 ```
 
 Paramètres : `event_id=<id>`, `since=<AAAA-MM-JJ ou ISO>` (créés/modifiés depuis), `per_page` (défaut 100, max 500).

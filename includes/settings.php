@@ -127,7 +127,7 @@ function adw_mecapi_settings_page() {
             </table>
 
             <h2 class="title">Module inscriptions (server-to-server uniquement)</h2>
-            <p>Endpoint <code>GET /wp-json/adw/v1/bookings</code> — liste des inscriptions avec n° de membre. ⚠️ Ne doit <strong>jamais</strong> être appelé depuis un navigateur : le secret resterait visible côté client. Réservé au futur backend de l'application.</p>
+            <p>Endpoint <code>GET /wp-json/adw-mec/v1/inscriptions</code> — liste des inscriptions avec n° de membre. ⚠️ Ne doit <strong>jamais</strong> être appelé depuis un navigateur : le secret resterait visible côté client. Réservé au futur backend de l'application.</p>
             <table class="form-table" role="presentation">
                 <tr>
                     <th scope="row"><label for="module_bookings">Activer l'endpoint inscriptions</label></th>
@@ -223,7 +223,7 @@ function adw_mecapi_settings_page() {
             if (empty($settings['module_bookings'])) {
                 $detail = 'Endpoint désactivé (normal en phase actuelle — à activer avec le backend).';
             } else {
-                $bresp = wp_remote_get(site_url('/wp-json/adw/v1/bookings?per_page=1'), array('timeout' => 10));
+                $bresp = wp_remote_get(site_url('/wp-json/adw-mec/v1/inscriptions?per_page=1'), array('timeout' => 10));
                 if (is_wp_error($bresp)) {
                     $detail = 'Erreur réseau : ' . esc_html($bresp->get_error_message());
                 } else {

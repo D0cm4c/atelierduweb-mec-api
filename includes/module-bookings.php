@@ -2,7 +2,7 @@
 /**
  * Module 5 — Inscriptions (bookings)
  *
- * Route REST protégée : GET /wp-json/adw/v1/bookings
+ * Route REST protégée : GET /wp-json/adw-mec/v1/inscriptions
  *
  * Retourne la liste des inscriptions M.E. Calendar (post type « mec-books ») :
  * id, event_id, event_title, date, name, email, count, status, et les champs
@@ -38,7 +38,7 @@ function adw_mecapi_bookings_register() {
         return;
     }
 
-    register_rest_route('adw/v1', '/bookings', array(
+    register_rest_route('adw-mec/v1', '/inscriptions', array(
         'methods' => 'GET',
         'callback' => 'adw_mecapi_bookings_list',
         'permission_callback' => 'adw_mecapi_bookings_permission',
