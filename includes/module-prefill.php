@@ -6,27 +6,27 @@
  * d'un événement avec des paramètres d'URL préfixés « adw_ » :
  *
  *   https://atelierduweb.be/formation/xxx/?adw_prenom=Jean&adw_nom=Dupont
- *     &adw_email=jean@exemple.be&adw_tel=0470000000&adw_membre=1234
+ *     &adw_email=jean@exemple.be&adw_membre=1234&adw_genre=F&adw_statut=Etudiant
  *
  * Un script injecté en wp_footer (seulement si des paramètres adw_* sont
  * présents) remplit le formulaire de réservation MEC. Le formulaire est
  * multi-étapes : les champs participants (étape 2) sont rendus en AJAX
  * dans #mec_booking{event_id} — couvert via MutationObserver + poll.
  *
- * Stratégie de reconnaissance (issue du HTML réel du site) :
- *   1. Sélecteurs structurels MEC :
- *      - nom      : .mec-book-reg-field-name input, input[name$="][name]"]
- *      - e-mail   : .mec-book-reg-field-mec_email input, input[name$="][email]"]
- *   2. Repli par libellé sur les champs personnalisés
- *      (li.mec-book-reg-field-*, .mec-book-bfixed-field-*) pour
- *      tél, adresse, âge, n° de membre.
- *   3. Jamais les champs de décompte de billets (book[tickets][X],
- *      .mec-book-ticket-limit) ni les inputs système.
+ * Champs remplis :
+ *   - Nom / e-mail : sélecteurs structurels MEC (.mec-book-reg-field-name,
+ *     input[name$="][name]"], .mec-book-reg-field-mec_email).
+ *   - Tous les autres champs (tél, n° de membre, genre, statut, adresse,
+ *     âge, ...) : reconnus par leur libellé. Chaque paramètre adw_<clef>
+ *     hors liste connue est apparié au champ dont le libellé contient
+ *     <clef> (ex. adw_genre -> champ « Genre », adw_statut -> « Statut »).
+ *   - Texte, listes déroulantes, boutons radio et cases à cocher simples.
  *
  * Garanties (site en production) :
  *   - Aucune écriture en base, aucun fichier modifié.
  *   - Script minime, sans dépendance, chargé uniquement quand utile.
- *   - Ne remplit que les champs vides (idempotent).
+ *   - Ne remplit que les champs vides / non cochés (idempotent).
+ *   - Jamais le décompte de billets (book[tickets][X]) ni les champs système.
  *
  * @package ADW_MECAPI
  */
@@ -75,6 +75,7 @@ function adw_mecapi_prefill_maybe_print() {
         return;
     }
 
+    /* Champs dont le nom de paramètre diffère du libellé attendu. */
     $params = array(
         'prenom'  => 'adw_prenom',
         'nom'     => 'adw_nom',
@@ -83,12 +84,28 @@ function adw_mecapi_prefill_maybe_print() {
         'membre'  => 'adw_membre',
         'adresse' => 'adw_adresse',
         'age'     => 'adw_age',
+        'genre'   => 'adw_genre',
+        'statut'  => 'adw_statut',
     );
 
     $values = array();
     foreach ($params as $key => $param) {
         if (isset($_GET[$param])) {
             $values[$key] = sanitize_text_field(wp_unslash($_GET[$param]));
+        }
+    }
+
+    /* Paramètres adw_* libres : adw_<clef> remplit le champ dont le
+       libellé contient <clef> (n° de membre, code postal, etc.). */
+    $known = array_values($params);
+    foreach ($_GET as $key => $value) {
+        $clean = sanitize_key($key);
+        if (strpos($clean, 'adw_') !== 0 || in_array($clean, $known, true)) {
+            continue;
+        }
+        $short = substr($clean, 4);
+        if ($short !== '') {
+            $values[$short] = sanitize_text_field(wp_unslash($value));
         }
     }
 
@@ -114,6 +131,21 @@ function adw_mecapi_prefill_maybe_print() {
 
         var data = <?php echo $json; ?>;
 
+        /* Clés traitées séparément (nom structurel, e-mail, nom complet fusionné). */
+        var SPECIAL = ['nom_complet', 'email', 'prenom', 'nom'];
+
+        /* Libellés par clé, en plus du nom du paramètre lui-même. */
+        var EXTRA_LABELS = {
+            tel:     ['phone', 'telephone', 'gsm', 'mobile', 'portable'],
+            membre:  ['member'],
+            adresse: ['address', 'rue'],
+            age:     ['date de naissance'],
+            genre:   ['sexe', 'civilite'],
+            statut:  ['status', 'situation'],
+            prenom:  ['first name', 'firstname', 'given name'],
+            nom:     ['nom de famille', 'last name', 'lastname', 'surname', 'family name']
+        };
+
         function norm(s) {
             return (s || '').toLowerCase()
                 .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -125,20 +157,17 @@ function adw_mecapi_prefill_maybe_print() {
             return new RegExp('(^|[^a-z])' + p).test(norm(text));
         }
 
-        var LABELS = {
-            tel:     ['tel', 'phone', 'telephone', 'gsm', 'mobile', 'portable'],
-            membre:  ['membre', 'member'],
-            adresse: ['adresse', 'address', 'rue'],
-            age:     ['age', 'date de naissance'],
-            prenom:  ['prenom', 'first name', 'firstname', 'given name'],
-            nom:     ['nom de famille', 'last name', 'lastname', 'surname', 'family name']
-        };
-
         function fieldLabelText(field) {
             var holder = field.closest('li, label, .mec-book-reg-field, .mec-book-bfixed-field, p, div');
             if (!holder) { return ''; }
             var label = holder.querySelector('label');
             return (label ? label.textContent : '') || holder.textContent || '';
+        }
+
+        function patternsFor(key) {
+            var patterns = EXTRA_LABELS[key] ? EXTRA_LABELS[key].slice() : [];
+            patterns.push(key);
+            return patterns;
         }
 
         function matchLabel(field, patterns) {
@@ -151,7 +180,8 @@ function adw_mecapi_prefill_maybe_print() {
 
         function editable(field) {
             if (field.disabled || field.readOnly) { return false; }
-            if (field.value && String(field.value).length) { return false; }
+            if ((field.type !== 'radio' && field.type !== 'checkbox') &&
+                field.value && String(field.value).length) { return false; }
             if (field.getAttribute('aria-disabled') === 'true') { return false; }
             return true;
         }
@@ -166,11 +196,20 @@ function adw_mecapi_prefill_maybe_print() {
             return Array.prototype.filter.call(document.querySelectorAll(selector), editable);
         }
 
+        /* Une option (radio/checkbox/select) correspond si son libellé ou
+           sa valeur est égal à la valeur, ou la première lettre si valeur
+           courte (F -> Femme, M -> Masculin). */
+        function optionMatches(value, text, optValue) {
+            var v = norm(value), t = norm(text), ov = norm(optValue);
+            if (t === v || ov === v) { return true; }
+            if (v.length === 1 && (t.charAt(0) === v || ov.charAt(0) === v)) { return true; }
+            return false;
+        }
+
         function setValue(field, value) {
             if (field.tagName === 'SELECT') {
                 for (var i = 0; i < field.options.length; i++) {
-                    if (norm(field.options[i].textContent) === norm(value) ||
-                        norm(field.options[i].value) === norm(value)) {
+                    if (optionMatches(value, field.options[i].textContent, field.options[i].value)) {
                         field.selectedIndex = i;
                         field.dispatchEvent(new Event('change', { bubbles: true }));
                         return true;
@@ -178,7 +217,20 @@ function adw_mecapi_prefill_maybe_print() {
                 }
                 return false;
             }
-            if (field.type === 'radio' || field.type === 'checkbox' || field.type === 'hidden') { return false; }
+            if (field.type === 'radio' || field.type === 'checkbox') {
+                /* Le libellé de l'option est le label englobant ou suivant. */
+                var optLabel = field.closest('label');
+                var text = optLabel ? optLabel.textContent : '';
+                if (!optLabel && field.nextElementSibling) { text = field.nextElementSibling.textContent; }
+                if (!field.checked && optionMatches(value, text, field.value)) {
+                    field.checked = true;
+                    field.dispatchEvent(new Event('input', { bubbles: true }));
+                    field.dispatchEvent(new Event('change', { bubbles: true }));
+                    return true;
+                }
+                return false;
+            }
+            if (field.type === 'hidden') { return false; }
             field.value = value;
             field.dispatchEvent(new Event('input', { bubbles: true }));
             field.dispatchEvent(new Event('change', { bubbles: true }));
@@ -189,10 +241,7 @@ function adw_mecapi_prefill_maybe_print() {
             if (!data[key]) { return; }
             var fields = regFields();
             for (var i = 0; i < fields.length; i++) {
-                if (predicate(fields[i])) {
-                    setValue(fields[i], data[key]);
-                    return;
-                }
+                if (predicate(fields[i]) && setValue(fields[i], data[key])) { return; }
             }
         }
 
@@ -206,12 +255,10 @@ function adw_mecapi_prefill_maybe_print() {
         function fillAll() {
             if (data.nom_complet) { fill('nom_complet', isNameField); }
             if (data.email) { fill('email', isEmailField); }
-            if (data.prenom) { fill('prenom', function (f) { return matchLabel(f, LABELS.prenom); }); }
-            if (data.nom) { fill('nom', function (f) { return !isNameField(f) && matchLabel(f, LABELS.nom); }); }
-            if (data.tel) { fill('tel', function (f) { return matchLabel(f, LABELS.tel); }); }
-            if (data.membre) { fill('membre', function (f) { return matchLabel(f, LABELS.membre); }); }
-            if (data.adresse) { fill('adresse', function (f) { return matchLabel(f, LABELS.adresse); }); }
-            if (data.age) { fill('age', function (f) { return matchLabel(f, LABELS.age); }); }
+            Object.keys(data).forEach(function (key) {
+                if (SPECIAL.indexOf(key) !== -1) { return; }
+                fill(key, function (f) { return matchLabel(f, patternsFor(key)); });
+            });
         }
 
         /* L'étape 2 est rendue en AJAX : on observe #mec_booking* + le body. */
@@ -220,7 +267,6 @@ function adw_mecapi_prefill_maybe_print() {
         }
 
         var attempts = 0;
-        var observer = null;
 
         function tick() {
             fillAll();
@@ -230,7 +276,7 @@ function adw_mecapi_prefill_maybe_print() {
 
         function start() {
             if (typeof MutationObserver !== 'undefined') {
-                observer = new MutationObserver(function () { fillAll(); });
+                var observer = new MutationObserver(function () { fillAll(); });
                 containers().forEach(function (t) { observer.observe(t, { childList: true, subtree: true }); });
                 observer.observe(document.body, { childList: true, subtree: true });
             }

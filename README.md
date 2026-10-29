@@ -29,9 +29,10 @@ L'application ouvre une page d'événement avec des paramètres `adw_*` :
 https://atelierduweb.be/formation/xxx/?adw_prenom=Jean&adw_nom=Dupont&adw_email=jean@exemple.be&adw_tel=0470%2000%2000%2000&adw_membre=ADW-1234
 ```
 
-- Paramètres supportés : `adw_prenom`, `adw_nom`, `adw_email`, `adw_tel`, `adw_membre`, `adw_adresse`, `adw_age`.
+- Paramètres prédéfinis : `adw_prenom`, `adw_nom`, `adw_email`, `adw_tel`, `adw_membre`, `adw_adresse`, `adw_age`, `adw_genre`, `adw_statut` — et **tout paramètre `adw_<clef>` libre** : il remplit le champ du formulaire dont le libellé contient `<clef>` (ex. `adw_code_postal` → champ « Code postal »).
 - Si l'URL ne contient pas encore `method=mec-booking-modal`, le plugin l'ajoute par redirection : la **modale s'ouvre directement**, pré-remplie.
-- Reconnaissance basée sur le HTML réel du formulaire MEC : nom (`.mec-book-reg-field-name`), e-mail (`.mec-book-reg-field-mec_email`), puis champs personnalisés par libellé (tél, n° de membre, adresse, âge), sans accents, en mot entier.
+- Reconnaissance basée sur le HTML réel du formulaire MEC : nom (`.mec-book-reg-field-name`), e-mail (`.mec-book-reg-field-mec_email`), puis champs personnalisés par libellé (tél, n° de membre, genre, statut, adresse, âge...), sans accents, en mot entier.
+- Prend en charge les champs texte, listes déroulantes, boutons radio et cases à cocher (ex. `adw_genre=F` coche l'option « Femme », `adw_statut=Etudiant` sélectionne l'option correspondante).
 - L'étape « Participants » est rendue en AJAX : couverte par `MutationObserver` sur `#mec_booking*` + poll de repli (12 s).
 - Ne remplit que les champs vides ; jamais le décompte de billets ni les champs système ; déclenche `input` + `change` pour la validation MEC.
 - Aucun script chargé si l'URL ne contient pas de paramètres `adw_*` → zéro impact pour les visiteurs normaux.
@@ -70,4 +71,4 @@ Les 4 objets doivent apparaître dans la réponse JSON.
 
 ## Version
 
-0.2.2 — modules 1, 2, tarif, 3, 4 (préfill), 5. Tous les modules prévus sont livrés.
+0.3.0 — modules 1, 2, tarif, 3, 4 (préfill générique adw_*), 5. Tous les modules prévus sont livrés.
