@@ -35,7 +35,37 @@ if (!defined('ABSPATH')) {
     return;
 }
 
+add_action('template_redirect', 'adw_mecapi_prefill_open_modal');
 add_action('wp_footer', 'adw_mecapi_prefill_maybe_print');
+
+/**
+ * Si l'URL contient des paramètres adw_* sans « method », on redirige vers
+ * la même URL avec method=mec-booking-modal : la modale de réservation
+ * s'ouvre directement avec les champs pré-remplis.
+ */
+function adw_mecapi_prefill_open_modal() {
+    if (!adw_mecapi_setting('module_prefill')) {
+        return;
+    }
+
+    $has_adw = false;
+    foreach ($_GET as $key => $ignored) {
+        if (strpos(sanitize_key($key), 'adw_') === 0) {
+            $has_adw = true;
+            break;
+        }
+    }
+    if (!$has_adw || isset($_GET['method'])) {
+        return;
+    }
+
+    if (!is_singular('mec-events')) {
+        return;
+    }
+
+    wp_safe_redirect(add_query_arg('method', 'mec-booking-modal'));
+    exit;
+}
 
 /**
  * Injecte le script de pré-remplissage si l'URL contient des paramètres adw_*.
