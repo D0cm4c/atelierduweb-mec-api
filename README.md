@@ -18,9 +18,25 @@ Plugin qui expose les informations de **M.E. Calendar** via l'API REST pour l'ap
 | 2 — Lieu | `mec_location` (wp/v2/mec-events) | ✅ actif | Nom, adresse, site du lieu (postmeta `mec_location_id`). |
 | Tarif | `mec_price` (wp/v2/mec-events) | ✅ actif | Coût brut (`mec_cost`), montant numérique, devise MEC. |
 | 3 — Places restantes | `mec_availability` (wp/v2/mec-events) | ✅ actif | Limite (`mec_total_bookings_limit`), réservées, restantes, « Complet ». |
+| 4 — Pré-remplissage | script wp_footer | ✅ actif | Pré-remplit le formulaire de réservation MEC à partir de paramètres d'URL `adw_*` (voir ci-dessous). |
 | 5 — Inscriptions | `GET /wp-json/adw/v1/bookings` | ❌ inactif | Bookings MEC avec **n° de membre** (détecté par le libellé du champ formulaire contenant « membre »). **Server-to-server uniquement**, secret header `X-ADW-Secret`. |
 
-*(Module 4 — préfill modale de réservation : à venir dans une version suivante.)*
+### Module 4 — Pré-remplissage de la modale de réservation
+
+L'application ouvre une page d'événement avec des paramètres `adw_*` :
+
+```
+https://atelierduweb.be/formation/xxx/?adw_prenom=Jean&adw_nom=Dupont&adw_email=jean@exemple.be&adw_tel=0470%2000%2000%2000&adw_membre=ADW-1234
+```
+
+- Paramètres supportés : `adw_prenom`, `adw_nom`, `adw_email`, `adw_tel`, `adw_membre`, `adw_adresse`, `adw_age`.
+- Si l'URL ne contient pas encore `method=mec-booking-modal`, le plugin l'ajoute par redirection : la **modale s'ouvre directement**, pré-remplie.
+- Reconnaissance basée sur le HTML réel du formulaire MEC : nom (`.mec-book-reg-field-name`), e-mail (`.mec-book-reg-field-mec_email`), puis champs personnalisés par libellé (tél, n° de membre, adresse, âge), sans accents, en mot entier.
+- L'étape « Participants » est rendue en AJAX : couverte par `MutationObserver` sur `#mec_booking*` + poll de repli (12 s).
+- Ne remplit que les champs vides ; jamais le décompte de billets ni les champs système ; déclenche `input` + `change` pour la validation MEC.
+- Aucun script chargé si l'URL ne contient pas de paramètres `adw_*` → zéro impact pour les visiteurs normaux.
+
+Test d'acceptation : ouvrir l'URL ci-dessus sur une formation existante, la modale doit s'ouvrir et les champs « Participants » se remplir seuls.
 
 ### Endpoint inscriptions
 
@@ -54,4 +70,4 @@ Les 4 objets doivent apparaître dans la réponse JSON.
 
 ## Version
 
-0.1.0 — modules 1, 2, tarif, 3, 5. Prochain : module 4 (préfill modale).
+0.2.2 — modules 1, 2, tarif, 3, 4 (préfill), 5. Tous les modules prévus sont livrés.
