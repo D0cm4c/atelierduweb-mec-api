@@ -43,10 +43,10 @@ function adw_mecapi_labels_register() {
 }
 
 /**
- * Nom du terme lié (organisateur ou lieu) ou null.
+ * Nom du terme lié (organisateur) ou null.
  *
  * @param int $post_id  ID de l'événement.
- * @param string $meta_key Clé postmeta (mec_organizer_id / mec_location_id).
+ * @param string $meta_key Clé postmeta (mec_organizer_id).
  * @return string|null
  */
 function adw_mecapi_labels_term_name($post_id, $meta_key) {
@@ -59,6 +59,27 @@ function adw_mecapi_labels_term_name($post_id, $meta_key) {
         return null;
     }
     return $term->name;
+}
+
+/**
+ * Lieu au format de la spec (issue app #89) : « nom, adresse » ou juste
+ * le nom si l'adresse est absente. Ex. : « L'Atelier du web, 37 Rue du
+ * Fort, 1060 Saint-Gilles ».
+ *
+ * @param int $post_id ID de l'événement.
+ * @return string|null
+ */
+function adw_mecapi_labels_location($post_id) {
+    $term_id = (int) get_post_meta($post_id, 'mec_location_id', true);
+    if (!$term_id) {
+        return null;
+    }
+    $term = get_term($term_id);
+    if (!$term || is_wp_error($term) || !isset($term->term_id)) {
+        return null;
+    }
+    $address = trim((string) get_term_meta($term->term_id, 'address', true));
+    return $address !== '' ? $term->name . ', ' . $address : $term->name;
 }
 
 /**
@@ -95,7 +116,7 @@ function adw_mecapi_labels_list($request) {
         $out[(string) $id] = array(
             'labels' => $labels,
             'price' => get_post_meta($id, 'mec_cost', true) ?: null,
-            'location' => adw_mecapi_labels_term_name($id, 'mec_location_id'),
+            'location' => adw_mecapi_labels_location($id),
             'organizer' => adw_mecapi_labels_term_name($id, 'mec_organizer_id'),
         );
     }
