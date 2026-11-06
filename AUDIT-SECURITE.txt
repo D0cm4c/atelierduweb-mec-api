@@ -1,0 +1,108 @@
+========================================================================
+RAPPORT D'AUDIT — PLUGIN WORDPRESS « ATELIER DU WEB — MEC API »
+========================================================================
+Version auditée : 0.5.1
+Contenu : 8 fichiers PHP (~850 lignes) + 1 script inline (pré-remplissage)
+Source : https://github.com/D0cm4c/atelierduweb-mec-api
+         (dépôt public versionné — tout l'historique du code est vérifiable)
+Date de l'audit : 30 octobre 2026
+Méthode : analyse automatisée (grep des fonctions capables d'écrire ou
+          de créer un risque) sur l'intégralité des fichiers PHP.
+
+------------------------------------------------------------------------
+OBJET DU PLUGIN
+------------------------------------------------------------------------
+Extension WordPress en LECTURE SEULE qui expose les informations de
+M.E. Calendar (organisateur, lieu, tarif, places restantes, étiquettes)
+via l'API REST, pré-remplit le formulaire de réservation MEC à partir de
+paramètres d'URL, et fournit un endpoint d'inscriptions protégé par
+secret (désactivé par défaut). Aucune modification du front, aucune
+modification des données MEC.
+
+------------------------------------------------------------------------
+1. ÉCRITURES EN BASE DE DONNÉES : 2 AU TOTAL, DOCUMENTÉES
+------------------------------------------------------------------------
+- add_option('adw_mecapi_settings')
+  -> à l'activation uniquement, une seule fois (valeurs par défaut),
+     sur une option propre au plugin
+  (fichier : atelierduweb-mec-api.php, ligne 49)
+
+- update_option('adw_mecapi_settings')
+  -> sauvegarde de la page Réglages -> ADW MEC API, protégée par
+     nonce + capability manage_options
+  (fichier : includes/settings.php, ligne 59)
+
+AUCUNE écriture sur : posts, méta, termes, utilisateurs, réservations
+MEC. Le plugin ne peut ni modifier ni détruire une donnée du site.
+
+------------------------------------------------------------------------
+2. SQL DIRECT : AUCUN
+------------------------------------------------------------------------
+Zéro accès $wpdb, zéro requête SQL brute (INSERT/UPDATE/DELETE/ALTER/
+CREATE introuvables). Toutes les lectures passent par l'API WordPress
+(get_posts, get_post_meta, get_term, get_the_terms) — requêtes
+préparées et échappement gérés par le noyau WP.
+
+------------------------------------------------------------------------
+3. ACCÈS FICHIERS / SYSTÈME : AUCUN
+------------------------------------------------------------------------
+Zéro écriture fichier (file_put_contents, fopen, fwrite introuvables),
+zéro commande système (exec, shell_exec, system, passthru, eval),
+zéro base64_decode, zéro modification de permissions (chmod).
+
+------------------------------------------------------------------------
+4. SÉCURITÉ DES FORMULAIRES ADMIN
+------------------------------------------------------------------------
+- Nonce vérifié (wp_verify_nonce + sanitize_key) sur toute sauvegarde
+- Capability manage_options exigée (page ET sauvegarde)
+- Entrées nettoyées (sanitize_text_field, sanitize_key, absint)
+- Sorties échappées (esc_html, esc_attr, esc_url)
+- Paramètres REST avec sanitize_callback
+
+------------------------------------------------------------------------
+5. ENDPOINT INSCRIPTIONS (protégé par secret)
+------------------------------------------------------------------------
+- DÉSACTIVÉ par défaut ; activation manuelle dans les réglages
+- Secret transmis par header uniquement (X-ADW-Secret), jamais en URL,
+  jamais en sortie, jamais loggé
+- Comparaison en temps constant (hash_equals) — insensible aux
+  timing attacks
+- Sans secret configuré : 403 ; secret incorrect : 401
+- Endpoints publics (/labels, champs wp/v2/mec-events) : données déjà
+  visibles sur le site, aucun secret impliqué
+- Aucun endpoint d'écriture exposé
+
+------------------------------------------------------------------------
+6. POINT EXAMINÉ : maybe_unserialize (module inscriptions)
+------------------------------------------------------------------------
+Seule désérialisation du code, appliquée à un méta LU EN BASE
+(mec_attendees, écrit par M.E. Calendar lui-même), jamais à une entrée
+utilisateur. Risque d'injection PHP : néant.
+
+------------------------------------------------------------------------
+7. GESTION D'ERREURS
+------------------------------------------------------------------------
+Toute donnée manquante renvoie null (jamais d'exception, jamais de
+wp_die). En cas d'erreur fatale PHP, WordPress désactive le plugin
+seul — le site reste joignable. Rollback = désactiver l'extension.
+
+------------------------------------------------------------------------
+8. REQUÊTES RÉSEAU
+------------------------------------------------------------------------
+Aucune requête vers l'extérieur. Les seuls appels HTTP sont des
+loopbacks vers le site lui-même (tests de diagnostic de la page
+réglages). Le script de pré-remplissage ne transmet rien : il lit les
+paramètres d'URL présents et remplit le formulaire côté navigateur.
+
+------------------------------------------------------------------------
+CONCLUSION
+------------------------------------------------------------------------
+Plugin à surface d'attaque minimale : lecture seule, 2 écritures
+d'option propres, zéro SQL direct, zéro accès fichier, formulaires
+noncés, secret en comparaison constante, aucune requête sortante.
+Désactivation = retour à l'état antérieur du site, sans nettoyage.
+
+Nota : ce rapport décrit le code du dépôt Git ci-dessus. Pour rester
+valide, l'extension doit être installée depuis ce dépôt sans
+modification.
+========================================================================
